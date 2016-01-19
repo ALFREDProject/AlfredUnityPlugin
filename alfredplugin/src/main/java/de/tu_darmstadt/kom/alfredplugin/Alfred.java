@@ -39,24 +39,16 @@ class Receiver extends BroadcastReceiver {
 class Listener implements RecognitionListener {
     private Context context;
     private SpeechRecognizer recognizer;
-    private CountDownTimer mTimer;
+    private CountDownTimer timer;
 
     public Listener(Context context) {
         this.context = context;
+        recognizer = SpeechRecognizer.createSpeechRecognizer(context);
+        recognizer.setRecognitionListener(this);
         listen();
     }
 
     private void listen() {
-        /*if (recognizer != null) {
-            recognizer.stopListening();
-            recognizer.cancel();
-            recognizer.destroy();
-        }*/
-
-        if (recognizer == null) {
-            recognizer = SpeechRecognizer.createSpeechRecognizer(context);
-            recognizer.setRecognitionListener(this);
-        }
         Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "en");
         intent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.getPackageName());
@@ -80,16 +72,13 @@ class Listener implements RecognitionListener {
 
     public void onError(int error) {
         Log.i("alfred", "Error " + error);
-        //if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
-        //    listen();
-        //}
 
-        if(mTimer != null){
-            mTimer.cancel();
+        if (timer != null){
+            timer.cancel();
         }
 
-        if(mTimer == null) {
-            mTimer = new CountDownTimer(2000, 500) {
+        if (timer == null) {
+            timer = new CountDownTimer(2000, 500) {
                 @Override
                 public void onTick(long l) {
                 }
@@ -98,17 +87,11 @@ class Listener implements RecognitionListener {
                 public void onFinish() {
                     Log.d("Speech", "Timer.onFinish: Timer Finished, Restart recognizer");
                     recognizer.cancel();
-                    Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-                    intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "en");
-                    intent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.getPackageName());
-                    intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_WEB_SEARCH);
-                    intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
-                    intent.putExtra("android.speech.extra.DICTATION_MODE", true);
-                    recognizer.startListening(intent);
+                    listen();
                 }
             };
         }
-        mTimer.start();
+        timer.start();
     }
 
     public void onEvent(int eventType, Bundle params) {
@@ -121,6 +104,7 @@ class Listener implements RecognitionListener {
         for (String result : matches) text += result + "\n";
         Log.i("alfred", "Partial Results");
         Log.i("alfred", text);
+        searchWords(matches);
     }
 
     public void onReadyForSpeech(Bundle params) {
@@ -133,11 +117,35 @@ class Listener implements RecognitionListener {
         for (String result : matches) text += result + "\n";
         Log.i("alfred", "Results");
         Log.i("alfred", text);
+        searchWords(matches);
         listen();
     }
 
     public void onRmsChanged(float rmsdB) {
         //Log.i("alfred", "Rms Changed");
+    }
+
+    private void searchWords(ArrayList<String> words) {
+        for (String result : words) {
+            if (result.toLowerCase().equals("pause")) {
+                synchronized (Alfred.actions) {
+                    Alfred.actions.add(Alfred.PAUSE);
+                    return;
+                }
+            }
+            else if (result.toLowerCase().equals("resume") || result.toLowerCase().equals("weiter")) {
+                synchronized (Alfred.actions) {
+                    Alfred.actions.add(Alfred.RESUME);
+                    return;
+                }
+            }
+            else if (result.toLowerCase().equals("stop")) {
+                synchronized (Alfred.actions) {
+                    Alfred.actions.add(Alfred.STOP);
+                    return;
+                }
+            }
+        }
     }
 }
 
@@ -166,10 +174,7 @@ public class Alfred {
             filter.addAction(STOP_GAME);
             context.registerReceiver(receiver = new Receiver(), filter);
 
-
-
             Handler mainHandler = new Handler(context.getMainLooper());
-
             Runnable myRunnable = new Runnable() {
                 @Override
                 public void run() {
@@ -177,9 +182,6 @@ public class Alfred {
                 }
             };
             mainHandler.post(myRunnable);
-
-
-
         }
         catch (ClassNotFoundException ex) {
 
